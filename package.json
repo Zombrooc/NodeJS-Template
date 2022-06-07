@@ -4,10 +4,12 @@
   "main": "index.js",
   "license": "MIT",
   "scripts": {
-    "dev": "nodemon ./src/index.js",
-    "start": "node ./src/index.js"
+    "dev": "set NODE_ENV=dev && nodemon ./src/index.js --ignore tests",
+    "start": "set NODE_ENV=production && node src/index.js",
+    "test": "set NODE_ENV=test && jest --detectOpenHandles --forceExit"
   },
   "devDependencies": {
+    "jest": "^28.1.0",
     "nodemon": "^2.0.4"
   },
   "dependencies": {
