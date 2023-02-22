@@ -1,72 +1,24 @@
-require("dotenv").config({
-  path: process.env.NODE_ENV === "test" ? ".env.test" : ".env",
-});
-const express = require("express");
-const cors = require("cors");
-const helmet = require("helmet");
-const morgan = require("morgan");
-const mongoose = require("mongoose");
-const cookieParser = require("cookie-parser");
-const path = require("path");
-const rateLimiter = require("./v1/Middlewares/rateLimiter");
+const os = require("os");
+const cluster = require("cluster");
 
-const app = express();
-const server = require("http").Server(app);
+const runPrimaryProcess = () => {
+  const processesCount = os.cpus().length * 2;
 
-const io = require("socket.io")(server);
+  console.log(`Processo primário ${process.pid} está rodando...`);
+  console.log(`Dividindo servidor com ${processesCount} processos \n`);
 
-app.use(cookieParser());
-app.use(helmet());
-app.use(cors());
-app.use(morgan("dev"));
-app.use(
-  express.json({
-    verify: function (req, res, buf) {
-      if (req.originalUrl.startsWith("/api/v1/checkout/webhook")) {
-        req.rawBody = buf.toString();
-      }
-    },
-  })
-);
-app.use(
-  express.urlencoded({
-    extended: false,
-  })
-);
-app.use(rateLimiter);
-app.use("/files", express.static(path.resolve(__dirname, "..", "uploads")));
+  for (let index = 0; index < processesCount; index++) cluster.fork();
 
-mongoose.connect(process.env.MONGO_URL, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  useFindAndModify: false,
-  useCreateIndex: true,
-});
-
-app.use((req, res, next) => {
-  req.io = io;
-  next();
-});
-
-app.use("/api/v1", require("./v1/Routes"));
-
-app.use((error, req, res, next) => {
-  if (error.status) {
-    res.status(error.status);
-  } else {
-    res.status(500);
-  }
-
-  res.json({
-    message: error.message,
-    stack: process.env.NODE_ENV === "production" ? "🥞" : error.stack,
+  cluster.on("exit", (worker, code, signal) => {
+    if (code !== 0 && !worker.exitedAfterDisconnect) {
+      console.log(`Worker ${worker.process.pid} morreu... Subindo um novo!`);
+      cluster.fork();
+    }
   });
-});
+};
 
-const PORT = process.env.PORT || 3333;
+const runWorkerProcess = async () => {
+  await import("./server.js");
+};
 
-server.listen(PORT, () => {
-  console.log(
-    `⚡️ [server]: Server is running at https://localhost:${PORT} ⚡️`
-  );
-});
+cluster.isPrimary ? runPrimaryProcess() : runWorkerProcess();
